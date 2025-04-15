@@ -1,0 +1,128 @@
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import axios from 'axios';
+
+const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7f50'];
+
+export default function Dashboard() {
+  const [transactions, setTransactions] = useState([]);
+  const [form, setForm] = useState({ amount: '', category: '', date: '', description: '' });
+  const [budgets, setBudgets] = useState({});
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  const fetchTransactions = async () => {
+    const res = await axios.get('/api/transactions');
+    setTransactions(res.data);
+  };
+
+  const addTransaction = async () => {
+    if (!form.amount || !form.category || !form.date) return;
+    await axios.post('/api/transactions', form);
+    setForm({ amount: '', category: '', date: '', description: '' });
+    fetchTransactions();
+  };
+
+  const deleteTransaction = async (id) => {
+    await axios.delete(`/api/transactions/${id}`);
+    fetchTransactions();
+  };
+
+  const groupedByMonth = transactions.reduce((acc, t) => {
+    const month = new Date(t.date).toLocaleString('default', { month: 'short' });
+    acc[month] = (acc[month] || 0) + Number(t.amount);
+    return acc;
+  }, {});
+
+  const monthlyData = Object.keys(groupedByMonth).map((month) => ({ name: month, total: groupedByMonth[month] }));
+
+  const groupedByCategory = transactions.reduce((acc, t) => {
+    acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
+    return acc;
+  }, {});
+
+  const categoryData = Object.keys(groupedByCategory).map((cat) => ({ name: cat, value: groupedByCategory[cat] }));
+
+  const budgetInsights = Object.keys(budgets).map((cat) => {
+    const spent = groupedByCategory[cat] || 0;
+    return { name: cat, spent, budget: budgets[cat] };
+  });
+
+  return (
+    <div className="p-4 grid gap-4">
+      <Card>
+        <CardContent className="grid gap-2">
+          <Input placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+          <Input placeholder="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          <Input placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <Button onClick={addTransaction}>Add Transaction</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <h2>Monthly Expenses</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={monthlyData}>
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="total" fill="#8884d8" />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <h2>Category-wise Breakdown</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie data={categoryData} dataKey="value" nameKey="name" outerRadius={100}>
+                {categoryData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <h2>Set Budgets</h2>
+          {Object.keys(groupedByCategory).map((cat) => (
+            <div key={cat} className="flex gap-2 items-center">
+              <span>{cat}</span>
+              <Input
+                type="number"
+                value={budgets[cat] || ''}
+                onChange={(e) => setBudgets({ ...budgets, [cat]: Number(e.target.value) })}
+                placeholder="Set budget"
+              />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <h2>Spending Insights</h2>
+          {budgetInsights.map((insight) => (
+            <div key={insight.name}>
+              <strong>{insight.name}</strong>: Spent ₹{insight.spent} / Budget ₹{insight.budget}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
